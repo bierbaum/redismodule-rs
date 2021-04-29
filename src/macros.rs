@@ -18,8 +18,8 @@ macro_rules! redis_command {
         ) -> c_int {
             let context = $crate::Context::new(ctx);
 
-            let response = $crate::decode_args(argv, argc)
-                .map(|args| $command_handler(&context, args))
+            let response = $crate::Args::from_redis_module_string(argv, argc)
+                .map(|args| $command_handler(&context, args.into()))
                 .unwrap_or_else(|e| Err(e));
 
             context.reply(response) as c_int
@@ -146,12 +146,14 @@ macro_rules! redis_module {
             ) } == raw::Status::Err as c_int { return raw::Status::Err as c_int; }
 
             let context = $crate::Context::new(ctx);
-            let args = $crate::decode_args(argv, argc);
+            let args = $crate::Args::from_redis_module_string(argv, argc);
 
             if args.is_err() { return raw::Status::Err as c_int }
 
+            let args: Vec<String> = args.unwrap().into();
+
             $(
-                if $init_func(&context, &args.unwrap()) == $crate::Status::Err {
+                if $init_func(&context, &args) == $crate::Status::Err {
                     return $crate::Status::Err as c_int;
                 }
             )*

@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::slice;
@@ -54,18 +55,41 @@ where
     }
 }
 
-pub fn decode_args(
-    argv: *mut *mut raw::RedisModuleString,
-    argc: c_int,
-) -> Result<Vec<String>, RedisError> {
-    unsafe { slice::from_raw_parts(argv, argc as usize) }
-        .iter()
-        .map(|&arg| {
-            RedisString::from_ptr(arg)
-                .map(|v| v.to_owned())
-                .map_err(|_| RedisError::Str("UTF8 encoding error in handler args"))
-        })
-        .collect()
+pub struct Args {
+    bytestrings: Vec<Vec<u8>>
+}
+
+impl Args {
+    pub fn from(bytestrings: Vec<Vec<u8>>) -> Self {
+        Args { bytestrings }
+    }
+
+    pub fn from_redis_module_string(argv: *mut *mut raw::RedisModuleString,
+                        argc: c_int,
+    ) -> Result<Self, RedisError> {
+        let mut vecs = Vec::<Vec<u8>>::new();
+        for arg in unsafe { slice::from_raw_parts(argv, argc as usize) }.iter() {
+            match RedisString::from_ptr(*arg) {
+                Ok(v) => {
+                    vecs.push(v.into());
+                },
+                Err(_) => return Err(RedisError::Str("UTF8 encoding error in handler args")),
+            }
+        }
+        Ok(Args::from(vecs))
+    }
+}
+
+impl Into<Vec<String>> for Args {
+    fn into(self) -> Vec<String> {
+        self.bytestrings.iter().map(|a| String::from_utf8_lossy(a).into_owned()).collect()
+    }
+}
+
+impl Into<Vec<Vec<u8>>> for Args {
+    fn into(self) -> Vec<Vec<u8>> {
+        self.bytestrings
+    }
 }
 
 pub fn parse_unsigned_integer(arg: &str) -> Result<u64, RedisError> {
@@ -145,6 +169,19 @@ impl RedisString {
     // Implement these to allow non-utf8 bytes to be consumed:
     // pub fn into_bytes(self) -> Vec<u8> {}
     // pub fn as_bytes(&self) -> &[u8] {}
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut len: libc::size_t = 0;
+        let bytes = unsafe { raw::RedisModule_StringPtrLen.unwrap()(self.inner, &mut len) };
+        // let bytes = unsafe { slice::from_raw_parts(bytes as *const u8, len) };
+        unsafe { Vec::<u8>::from_raw_parts(bytes as *mut u8, len, len) }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        let mut len: libc::size_t = 0;
+        let bytes = unsafe { raw::RedisModule_StringPtrLen.unwrap()(self.inner, &mut len) };
+        let bytes = unsafe { slice::from_raw_parts(bytes as *const u8, len) };
+        bytes
+    }
 }
 
 impl Drop for RedisString {
