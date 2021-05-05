@@ -495,6 +495,15 @@ pub fn subscribe_to_server_event(
 }
 
 #[cfg(feature = "experimental-api")]
+pub fn export_shared_api(
+    ctx: *mut RedisModuleCtx,
+    func: *const ::std::os::raw::c_void,
+    name: *const ::std::os::raw::c_char,
+) {
+    unsafe { RedisModule_ExportSharedAPI.unwrap()(ctx, name, func as *mut ::std::os::raw::c_void) };
+}
+
+#[cfg(feature = "experimental-api")]
 pub fn notify_keyspace_event(
     ctx: *mut RedisModuleCtx,
     event_type: NotifyEvent,
@@ -513,7 +522,6 @@ pub fn notify_keyspace_event(
         .into()
     }
 }
-
 
 #[cfg(feature = "experimental-api")]
 pub fn get_keyspace_events() -> NotifyEvent {
